@@ -80,7 +80,7 @@ def run_numerical_comparison():
     bank = LogGaborBank3DSepT()
     bank.input_size = list(size_dims)
     bank.set_up_filters()
-    R_py = bank.response(test_input)
+    R_py, Rz_py = bank.response(test_input)
     
     print("--- Running MATLAB Implementation ---")
     # Pass only filenames to MATLAB since we handle directory switching inside the .m script

@@ -2,7 +2,7 @@ import numpy as np
 import gc
 from scipy.fft import fft, ifft, fft2, ifft2, ifftn, fftshift
 from scipy.ndimage import zoom
-
+from stdev_response import stdev_response
 
 class LogGaborBank3DSepT:
     def __init__(self):
@@ -128,59 +128,77 @@ class LogGaborBank3DSepT:
         R = {}
         Rz = {}
 
-        # Cast input to float32. fft2 will naturally return complex64 (cutting memory in half!)
+        # 1. Spatial FFT of the input video
         I_F_sp = fft2(I.astype(np.float32), axes=(0, 1))
 
         for ind_s in range(self.num_scales):
             for ind_o in range(self.num_orientations):
                 Gs = self.filters_spatial[(ind_o, ind_s)].astype(np.float32)
 
-                # Spatial filtering
+                # 2. Spatial filtering
                 R_sp = ifft2(I_F_sp * Gs, axes=(0, 1))
 
-                # Spatial downsampling
+                # 3. Spatial downsampling (decimation)
                 ss = self.spacing_spatial if np.isscalar(self.spacing_spatial) else self.spacing_spatial[ind_s]
                 if ss != 1:
                     offset = ss // 2
                     R_sp = R_sp[offset::ss, offset::ss, :]
 
-                # Temporal FFT
+                # 4. Temporal FFT
                 R_F_t = fft(R_sp, axis=2)
-
-                # Free spatial response memory early
-                del R_sp
+                del R_sp # Free spatial response memory
 
                 for ind_v in range(self.num_velocities):
                     Gt = self.filters_temporal[(ind_v, ind_s)]
 
-                    if Gt is not None:
+                    # Condition to match MATLAB: skip zero velocity if orientation >= 180
+                    if Gt is not None and not (self.velocities[ind_v] == 0 and self.orientations[ind_o] >= 180):
                         Gt = Gt.astype(np.float32)
                         ind_filt = self.ind_tuning_to_ind_filt(ind_v + 1, ind_o + 1)
 
-                        # Temporal filtering
-                        res = ifft(R_F_t * Gt, axis=2)
+                        # 5. Temporal filtering
+                        res = ifft(R_F_t * Gt, axis=2).astype(np.complex64)
 
-                        # Temporal downsampling
-                        st = self.spacing_temporal if np.isscalar(self.spacing_temporal) else self.spacing_temporal[
-                            ind_v, ind_s]
+                        # 6. Temporal downsampling
+                        st = self.spacing_temporal if np.isscalar(self.spacing_temporal) else self.spacing_temporal[ind_v, ind_s]
                         if st != 1:
                             offset_t = st // 2
                             res = res[:, :, offset_t::st]
 
-                        # Explicitly ensure it is stored as the smaller complex64 format
-                        R[(ind_filt, ind_s)] = res.astype(np.complex64)
+                        # Store filter response
+                        R[(ind_filt, ind_s)] = res
+
+                        # --- Z-SCORE CALCULATION ---
+                        if flux_noise_std is not None:
+                            # 7. Match noise resolution to filtered response resolution
+                            # If downsampling occurred, we need to resize the noise estimate
+                            if flux_noise_std.shape != res.shape:
+                                # Calculate zoom factors for H, W, and T
+                                zoom_factors = [r / n for r, n in zip(res.shape, flux_noise_std.shape)]
+                                # 'order=0' replicates MATLAB 'nearest' neighbor interpolation
+                                noise_std_os = zoom(flux_noise_std, zoom_factors, order=0)
+                            else:
+                                noise_std_os = flux_noise_std
+
+                            # 8. Calculate standard deviation of response
+                            # (Using the helper function converted previously)
+                            # std_R = flux_noise_std * sqrt(0.5 * filter_energy)
+                            filter_energy = self.filter_energies[ind_filt, ind_s]
+                            std_R = stdev_response(noise_std_os, filter_energy)
+
+                            # 9. Compute Z-Score: magnitude of response / expected noise std
+                            Rz[(ind_filt, ind_s)] = (np.abs(res) / std_R).astype(np.float32)
+                        else:
+                            # If no noise estimate provided, Rz is effectively infinite (infinite SNR)
+                            Rz[(ind_filt, ind_s)] = np.full(res.shape, np.inf, dtype=np.float32)
+                        
                         del res
 
-                        if flux_noise_std is not None:
-                            # Replicate MATLAB's z-score logic here eventually
-                            pass
-
-                            # Free temporal FFT memory before moving to next orientation
                 del R_F_t
                 gc.collect()
 
         return R, Rz
-
+    
     def tuning_directions(self):
         """
         Returns an (N, 3) array of the 3D tuning directions [nx, ny, nt]
