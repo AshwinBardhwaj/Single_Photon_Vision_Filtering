@@ -1,6 +1,6 @@
 .venv
 .DS_Store
-
 filtering/__pycache__
 filtering/test/filtering
 filtering/test/run_matlab_validation.m
+.idea
