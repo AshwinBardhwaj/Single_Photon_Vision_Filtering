@@ -2,7 +2,7 @@ import numpy as np
 import gc
 from scipy.fft import fft, ifft, fft2, ifft2, ifftn, fftshift
 from scipy.ndimage import zoom
-from stdev_response import stdev_response
+from filtering.stdev_response import stdev_response
 
 class LogGaborBank3DSepT:
     def __init__(self):
