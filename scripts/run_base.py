@@ -4,7 +4,6 @@ import numpy as np
 from scipy.io import loadmat
 from scipy.ndimage import gaussian_filter
 
-# Adjust these imports based on your exact Python implementations
 from sensor.sensor import ippd, binom_noise_std
 from filtering.log_gabor_filter_bank import LogGaborBank3DSepT
 from vision.feature_detection.phase_congruency import phase_congruency_3D_structure_tensor
@@ -14,66 +13,56 @@ from vision.motion_estimation.vel_fj1990_approx_withz import vel_fj1990_approx_w
 from visualize.visualize import vis_edge, vis_flo_dense
 from utils.utils import rescale_prctile
 
-# Using your specific imageio saver
 from fileio.fileio import save_video_imageio as save_video
 
 
-def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds):
-    """
-    Python equivalent of run_base.m
-    """
+def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds=None):
     print(f"Loading data from {data_file}...")
     data = loadmat(data_file)
     B = data['B'].astype(np.float32)
     M = data['M'].item()
 
-    out_imin, out_imax, out_jmin, out_jmax = crop_bounds
+    if crop_bounds is None:
+        out_imin, out_imax = 0, B.shape[0]
+        out_jmin, out_jmax = 0, B.shape[1]
+    else:
+        out_imin, out_imax, out_jmin, out_jmax = crop_bounds
+
     n_skip = params['N_SKIP_OUTPUT']
 
-    # Implementation assumes B is scaled to range [0, 1]
     if M != 1:
         B = B * (1.0 / M)
 
-    # Flux level estimation
     c_est = ippd(np.mean(B[out_imin:out_imax, out_jmin:out_jmax, :]))
     print(f"Flux level: {c_est * M:.4f} ppp.")
 
-    # Local flux and noise
     t0 = time.time()
-    # imgaussfilt3 with sigma 10
     local_flux = ippd(gaussian_filter(B, sigma=10))
     flux_noise_std = binom_noise_std(local_flux, M)
     print(f"Estimate local mean flux: {time.time() - t0:.3f} seconds.")
 
-    # Filter initialization
     t0 = time.time()
     H, W, N = B.shape
 
     filts = LogGaborBank3DSepT()
 
-    # Apply the config parameters as attributes
     for key, value in filts_config.items():
         setattr(filts, key, value)
 
-    # Set the input size and run setup
     filts.input_size = (H, W, N)
 
-    # Check if your Python method returns a new object or modifies in-place
     result = filts.set_up_filters()
     if result is not None:
         filts = result
 
     print(f"Filter initialization: {time.time() - t0:.3f} seconds.")
 
-    # Filter responses
     t0 = time.time()
     R, Rz = filts.response(B, flux_noise_std)
     print(f"Get filter responses: {time.time() - t0:.3f} seconds.")
 
-    # Edge Detection (TPC)
     t0 = time.time()
 
-    # Phase Congruency function expects a list of lists: R_formatted[direction][scale]
     num_dirs = filts.num_orientations * filts.num_velocities
     R_formatted = [
         [R.get((d, s), None) for s in range(filts.num_scales)]
@@ -92,7 +81,6 @@ def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds):
     edges, _, _ = features_3D_structure_tensor(PC_x2, PC_y2, PC_t2, PC_xy, PC_yt, PC_xt)
     print(f"edge_detection_TPC: {time.time() - t0:.3f} seconds.")
 
-    # Edge Velocities (TPC)
     t0 = time.time()
     flo1 = flo_1d_to_uv(edges['normal_velocity'], edges['orientation'])
     strength_thresh = np.percentile(edges['strength'], 75)
@@ -101,7 +89,6 @@ def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds):
                (edges['coherence'] > 0.5)
     print(f"edge_velocities_TPC: {time.time() - t0:.3f} seconds.")
 
-    # FJ1990 Approximation
     t0 = time.time()
 
     if Rz:
@@ -110,7 +97,6 @@ def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds):
         print("Note: Rz is empty, falling back to R dictionary for FJ1990 optical flow.")
         Rz_dict = R
 
-    # Create a wrapper class to bypass the conflicting requirements in vel_fj1990_approx_withz
     class RzDictWrapper:
         def __init__(self, d, nd, ns):
             self.d = d
@@ -118,15 +104,15 @@ def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds):
             self.ns = ns
 
         def __len__(self):
-            return self.nd  # Resolves: len(Rz)
+            return self.nd
 
         def __getitem__(self, idx):
             if idx == 0:
-                return [None] * self.ns  # Resolves: len(Rz[0])
+                return [None] * self.ns
             raise KeyError(idx)
 
         def get(self, key, default=None):
-            return self.d.get(key, default)  # Resolves: Rz.get((i2, i1))
+            return self.d.get(key, default)
 
     Rz_wrapped = RzDictWrapper(Rz_dict, num_dirs, filts.num_scales)
 
@@ -137,7 +123,6 @@ def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds):
     )
     print(f"vel_FJ1990_approx_withz_multiscale: {time.time() - t0:.3f} seconds.")
 
-    # Cropping outputs (removing periodicity artifacts)
     B_crop = B[out_imin:out_imax, out_jmin:out_jmax, n_skip:-n_skip]
     estr_crop = edges['strength'][out_imin:out_imax, out_jmin:out_jmax, n_skip:-n_skip]
     flo1_crop = flo1[out_imin:out_imax, out_jmin:out_jmax, :, n_skip:-n_skip]
@@ -149,10 +134,8 @@ def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds):
         flo2_FJ_ms_crop.append(flo2_FJ_ms[s][out_imin:out_imax, out_jmin:out_jmax, :, n_skip:-n_skip])
         rel2_FJ_ms_crop.append(rel2_FJ_ms[s][out_imin:out_imax, out_jmin:out_jmax, n_skip:-n_skip])
 
-    # Save Visualizations
     os.makedirs(output_dir, exist_ok=True)
 
-    # Use np.moveaxis(..., -1, 0) to shift 'Time' axis from last to first for imageio
     B_v = rescale_prctile(B_crop)
     save_video(np.moveaxis(B_v, -1, 0), os.path.join(output_dir, 'B.mp4'))
 
