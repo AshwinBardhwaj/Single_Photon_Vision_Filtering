@@ -5,7 +5,7 @@ from .feature_utils import edge_props_3D, edge_coherence, corner_coherence
 EPS32 = np.finfo(np.float32).eps
 
 
-def eig_3x3_sym_video(Ix2, Ixy, Ixt, Iy2, Iyt, It2):
+def eig_3x3_sym_video(Ix2, Ixy, Ixt, Iy2, Iyt, It2, enforce_evec_z_nonneg=True):
     shape = Ix2.shape
     N = int(np.prod(shape))
     dtype = Ix2.dtype
@@ -21,13 +21,20 @@ def eig_3x3_sym_video(Ix2, Ixy, Ixt, Iy2, Iyt, It2):
     w = w[:, ::-1]
     v = v[:, :, ::-1]
 
+    if enforce_evec_z_nonneg:
+        flip = v[:, 2, :] < 0
+        signs = np.where(flip, -1.0, 1.0).astype(dtype)
+        v = v * signs[:, np.newaxis, :]
+
     evals = w.reshape(shape + (3,))
     evecs = v.reshape(shape + (3, 3))
     return evals, evecs
 
 
-def features_3D_structure_tensor(Ix2, Iy2, It2, Ixy, Iyt, Ixt):
-    evals, evecs = eig_3x3_sym_video(Ix2, Ixy, Ixt, Iy2, Iyt, It2)
+def features_3D_structure_tensor(Ix2, Iy2, It2, Ixy, Iyt, Ixt,
+                                 enforce_evec_z_nonneg=True):
+    evals, evecs = eig_3x3_sym_video(Ix2, Ixy, Ixt, Iy2, Iyt, It2,
+                                     enforce_evec_z_nonneg=enforce_evec_z_nonneg)
 
     ex1 = evecs[..., 0, 0]
     ey1 = evecs[..., 1, 0]
