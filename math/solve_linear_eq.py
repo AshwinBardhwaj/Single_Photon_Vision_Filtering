@@ -1,6 +1,7 @@
 import numpy as np
 
 # note writes eigenvalues/vectors with different combination of signs but is equivalent
+# this file is needed for
 def solve_linear_eq_2x2_sym(AtA_11, AtA_12, AtA_22, Atb_1, Atb_2, k=1e-2):
     """Replaces solve_linear_eq_2x2_sym.m"""
     det = (AtA_11 * AtA_22) - (AtA_12 * AtA_12)
