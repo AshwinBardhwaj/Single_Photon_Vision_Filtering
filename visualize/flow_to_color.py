@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.colors as mcolors
 
-# Middlebury's flowToColor
+# Middlebury's flowToColor (untested)
 def flow_to_color(flow, max_flow=None):
     u = flow[:, :, 0].astype(float)
     v = flow[:, :, 1].astype(float)
