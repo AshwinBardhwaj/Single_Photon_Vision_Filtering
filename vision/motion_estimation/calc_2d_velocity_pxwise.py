@@ -72,7 +72,8 @@ def calc_2d_velocity_pxwise(nx2_list, nxny_list, ny2_list, vnx_list, vny_list, w
     # Construct the final V array [H, W, 2, N]
     # In MATLAB: V(:,:,1,:) = vx;
     # We expand dims to allow proper assignment into the "2" channel axis
-    V = np.zeros((h, w, 2, n), dtype=nx2.dtype)
+    # V = np.zeros((h, w, 2, n), dtype=nx2.dtype)
+    V = np.zeros((int(h), int(w), 2, int(n)), dtype=nx2.dtype)
     V[:, :, 0, :] = vx.reshape(h, w, n)
     V[:, :, 1, :] = vy.reshape(h, w, n)
 
