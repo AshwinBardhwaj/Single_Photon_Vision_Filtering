@@ -14,8 +14,7 @@ from vision.motion_estimation.vel_fj1990_approx_withz import vel_fj1990_approx_w
 from visualize.visualize import vis_edge, vis_flo_dense
 from utils.utils import rescale_prctile
 
-# Depending on your fileio.py, you might need to adjust this import
-# if your function is specifically named save_video_imageio
+# Using your specific imageio saver
 from fileio.fileio import save_video_imageio as save_video
 
 
@@ -31,7 +30,7 @@ def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds):
     out_imin, out_imax, out_jmin, out_jmax = crop_bounds
     n_skip = params['N_SKIP_OUTPUT']
 
-    # Scale B
+    # Implementation assumes B is scaled to range [0, 1]
     if M != 1:
         B = B * (1.0 / M)
 
@@ -74,7 +73,7 @@ def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds):
     # Edge Detection (TPC)
     t0 = time.time()
 
-    # Reformat R from a flat dictionary to a list of lists: R_formatted[direction][scale]
+    # Phase Congruency function expects a list of lists: R_formatted[direction][scale]
     num_dirs = filts.num_orientations * filts.num_velocities
     R_formatted = [
         [R.get((d, s), None) for s in range(filts.num_scales)]
@@ -105,10 +104,34 @@ def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds):
     # FJ1990 Approximation
     t0 = time.time()
 
-    # Notice we use Rz here. If vel_fj1990_approx_withz also expects a list of lists,
-    # we might need to format Rz exactly like we formatted R above!
+    if Rz:
+        Rz_dict = Rz
+    else:
+        print("Note: Rz is empty, falling back to R dictionary for FJ1990 optical flow.")
+        Rz_dict = R
+
+    # Create a wrapper class to bypass the conflicting requirements in vel_fj1990_approx_withz
+    class RzDictWrapper:
+        def __init__(self, d, nd, ns):
+            self.d = d
+            self.nd = nd
+            self.ns = ns
+
+        def __len__(self):
+            return self.nd  # Resolves: len(Rz)
+
+        def __getitem__(self, idx):
+            if idx == 0:
+                return [None] * self.ns  # Resolves: len(Rz[0])
+            raise KeyError(idx)
+
+        def get(self, key, default=None):
+            return self.d.get(key, default)  # Resolves: Rz.get((i2, i1))
+
+    Rz_wrapped = RzDictWrapper(Rz_dict, num_dirs, filts.num_scales)
+
     _, _, flo2_FJ_ms, rel2_FJ_ms = vel_fj1990_approx_withz(
-        Rz,
+        Rz_wrapped,
         filts.tuning_directions(),
         solve_2d_pxwise_k=params['FJ_SOLVE_2D_PXWISE_K']
     )
@@ -129,18 +152,19 @@ def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds):
     # Save Visualizations
     os.makedirs(output_dir, exist_ok=True)
 
+    # Use np.moveaxis(..., -1, 0) to shift 'Time' axis from last to first for imageio
     B_v = rescale_prctile(B_crop)
-    save_video(B_v, os.path.join(output_dir, 'B.mj2'))
+    save_video(np.moveaxis(B_v, -1, 0), os.path.join(output_dir, 'B.mp4'))
 
     estr_v = vis_edge(estr_crop, False, params['ESTR_VIS_PRCTILE_THRESH'])
-    save_video(estr_v, os.path.join(output_dir, 'estr_TPC.mj2'))
+    save_video(np.moveaxis(estr_v, -1, 0), os.path.join(output_dir, 'estr_TPC.mp4'))
 
     flo1_v = vis_flo_dense(flo1_crop, rel_flo1_crop, params['MAX_FLO'], params['FLO1_VIS_THICKEN'])
-    save_video(flo1_v, os.path.join(output_dir, 'flo1_TPC.mj2'))
+    save_video(np.moveaxis(flo1_v, -1, 0), os.path.join(output_dir, 'flo1_TPC.mp4'))
 
     for s in range(len(flo2_FJ_ms_crop)):
         rel_mask = rel2_FJ_ms_crop[s] > params['FLO2_REL_THRESH']
         flo2_FJ_ms_c = vis_flo_dense(flo2_FJ_ms_crop[s], rel_mask, params['MAX_FLO'])
-        save_video(flo2_FJ_ms_c, os.path.join(output_dir, f'flo2_FJ_ms_{s + 1}.mj2'))
+        save_video(np.moveaxis(flo2_FJ_ms_c, -1, 0), os.path.join(output_dir, f'flo2_FJ_ms_{s + 1}.mp4'))
 
     print(f"Finished processing and saving to {output_dir}")
