@@ -2,7 +2,7 @@ import numpy as np
 from scipy.ndimage import maximum_filter, distance_transform_edt
 from matplotlib.colors import hsv_to_rgb
 
-from flow_to_color import flow_to_color
+from .flow_to_color import flow_to_color
 
 def rescale_array(arr, in_min=None, in_max=None):
     """Helper function to replicate MATLAB's rescale."""
