@@ -11,7 +11,6 @@ def fi_px_gaussian(sigma):
 def fi_px_poisson(f):
     return 1 / f
 
-
 def fi_px_quanta_1bit(f):
     p = ppd(f)
     return (1 - p) / p
