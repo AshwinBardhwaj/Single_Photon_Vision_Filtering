@@ -1,4 +1,6 @@
 import numpy as np
+from calc_2d_velocity_pxwise import calc_2d_velocity_pxwise, solve_linear_eq_2x2_sym
+from vel_scalecomb_max import vel_scalecomb_max
 
 def vel_fj1990_approx_withz(Rz, dirs, zscore_weight_thresh=6, wsum_rel_thresh=1, solve_2d_pxwise_k=None):
     """
