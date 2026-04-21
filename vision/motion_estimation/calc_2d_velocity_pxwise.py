@@ -77,3 +77,23 @@ def calc_2d_velocity_pxwise(nx2_list, nxny_list, ny2_list, vnx_list, vny_list, w
     V[:, :, 1, :] = vy.reshape(h, w, n)
 
     return (V, rel) if rel is not None else V
+
+
+def solve_linear_eq_2x2_sym(AtA_11, AtA_12, AtA_22, Atb_1, Atb_2, k=1e-2):
+    """Replaces solve_linear_eq_2x2_sym.m"""
+    det = (AtA_11 * AtA_22) - (AtA_12 * AtA_12)
+
+    inv_AtA_11 = AtA_22
+    inv_AtA_12 = -AtA_12
+    inv_AtA_22 = AtA_11
+
+    x1 = inv_AtA_11 * Atb_1 + inv_AtA_12 * Atb_2
+    x2 = inv_AtA_12 * Atb_1 + inv_AtA_22 * Atb_2
+
+    eps = np.finfo(float).eps
+    x1 = x1 / (eps + det)
+    x2 = x2 / (eps + det)
+
+    rel = det > k * ((AtA_11 + AtA_22) ** 2)
+
+    return x1, x2, rel
