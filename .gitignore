@@ -5,3 +5,6 @@ filtering/test/filtering
 filtering/test/run_matlab_validation.m
 .idea
 **.pyc
+encoded_train
+val
+scripts/data/sim_xvfi_1bit
