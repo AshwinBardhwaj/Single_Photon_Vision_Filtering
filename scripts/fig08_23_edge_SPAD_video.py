@@ -20,6 +20,7 @@ filts_config = {
 }
 
 params = {
+    'FILTER_TYPE': 'steerable',
     'TPC_NOISE_THRESH_ZMIN': 2,
     'FJ_SOLVE_2D_PXWISE_K': 0.1,
     'N_SKIP_OUTPUT': 15,

@@ -42,6 +42,7 @@ params = {
     'MAX_FLO': 1,
     'FLO1_VIS_THICKEN': 3,
     'FLO2_REL_THRESH': 0.5,
+    'FILTER_TYPE': 'learned'
 }
 
 eval_config = {

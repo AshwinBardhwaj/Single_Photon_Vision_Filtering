@@ -6,6 +6,10 @@ from scipy.ndimage import gaussian_filter
 
 from sensor.sensor import ippd, binom_noise_std
 from filtering.log_gabor_filter_bank import LogGaborBank3DSepT
+from filtering.iir_filter_bank import IIRFilterBank3DSepT
+from filtering.steerable_filter_bank import SteerableFilterBank3DSepT
+from filtering.learned_filter_bank import LearnedFilterBank3DSepT
+from filtering.dtcwt_filter_bank import DTCWTFilterBank3DSepT
 from vision.feature_detection.phase_congruency import phase_congruency_3D_structure_tensor
 from vision.feature_detection.structure_tensor import features_3D_structure_tensor
 from vision.motion_estimation.flo_1d_to_uv import flo_1d_to_uv
@@ -43,8 +47,17 @@ def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds=No
 
     t0 = time.time()
     H, W, N = B.shape
-
-    filts = LogGaborBank3DSepT()
+    filter_type = params.get('FILTER_TYPE', 'log_gabor')
+    if filter_type == 'iir':
+        filts = IIRFilterBank3DSepT()
+    elif filter_type == 'steerable':
+        filts = SteerableFilterBank3DSepT()
+    elif filter_type == 'learned':
+        filts = LearnedFilterBank3DSepT()
+    elif filter_type == 'dtcwt':
+        filts = DTCWTFilterBank3DSepT()
+    else:
+        filts = LogGaborBank3DSepT()
 
     for key, value in filts_config.items():
         setattr(filts, key, value)
@@ -138,6 +151,9 @@ def execute_pipeline(data_file, output_dir, filts_config, params, crop_bounds=No
 
     B_v = rescale_prctile(B_crop)
     save_video(np.moveaxis(B_v, -1, 0), os.path.join(output_dir, 'B.mp4'))
+
+    B_bright = np.clip(B_v, 0, 1) ** 0.7
+    save_video(np.moveaxis(B_bright, -1, 0), os.path.join(output_dir, 'B_bright.mp4'))
 
     estr_v = vis_edge(estr_crop, False, params['ESTR_VIS_PRCTILE_THRESH'])
     save_video(np.moveaxis(estr_v, -1, 0), os.path.join(output_dir, 'estr_TPC.mp4'))
