@@ -13,17 +13,11 @@ from run_base_sim import execute_pipeline_sim
 
 SIM_DATA_DIR = DATA_BASEDIR / "sim_xvfi_1bit"
 
-# ---------------------------------------------------------
-# Set these variables to match the clip you want to process
-# ---------------------------------------------------------
-PARENT_DIR = "005"  # The folder number, e.g., '004', '005'
-VID_NAME = "occ008.269_f1617"  # The name of the video file without .mp4
-PPP = 1.25  # The flux level to evaluate
+PARENT_DIR = "005"
+VID_NAME = "occ008.269_f1617"
+PPP = 1.25
 
-# Construct the correct path based on the new folder structure
 data_file = SIM_DATA_DIR / PARENT_DIR / VID_NAME / f"ppp_{PPP:.2f}_data.mat"
-
-# Set up an organized output directory
 output_name = f"{VID_NAME}_ppp{PPP:.2f}"
 output_dir = OUTPUT_BASEDIR / PARENT_DIR / output_name
 

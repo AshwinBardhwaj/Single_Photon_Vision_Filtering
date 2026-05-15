@@ -1,24 +1,3 @@
-"""
-eval_full_comparison.py
-=======================
-Unified performance comparison: Log Gabor vs Adaptive IIR vs Steerable Pyramid.
-
-Metrics
--------
-Edge detection:
-  Real data  — relative F-score vs Log Gabor pseudo-GT, tolerance=2px
-  Sim  data  — absolute F-score vs edges_gt, tolerance=2px, per PPP level
-
-Optical flow (flo1 edge-normal, flo2 FJ1990 multi-scale):
-  - Coverage: fraction of pixels with reliable flow estimates
-  - EPE: endpoint error relative to Log Gabor (pseudo-reference)
-
-Runtime and peak memory per method.
-
-Usage:
-    python scripts/eval_full_comparison.py [--real-only | --sim-only]
-"""
-
 import os
 import sys
 import time
@@ -45,8 +24,6 @@ from vision.motion_estimation.flo_1d_to_uv import flo_1d_to_uv
 from vision.motion_estimation.vel_fj1990_approx_withz import vel_fj1990_approx_withz
 from visualize.visualize import vis_edge, vis_flo_dense
 from sensor.sensor import binom_noise_std, ippd
-
-# ─────────────────────────── Config ───────────────────────────
 
 FILTS_CONFIG = {
     'velocities':     np.array([1, -1, 0.3, -0.3, 0]),
@@ -87,10 +64,7 @@ METHOD_NAMES = [m[0] for m in METHODS]
 REF_METHOD   = "Log Gabor"
 
 
-# ─────────────────── Rz wrapper for FJ1990 ────────────────────
-
 class _RzWrapper:
-    """Wraps a (ind_filt, ind_s) dict so vel_fj1990_approx_withz can call len() and [0]."""
     def __init__(self, d, num_dirs, num_scales):
         self._d = d
         self._nd = num_dirs
@@ -108,8 +82,6 @@ class _RzWrapper:
         return self._d.get(key, default)
 
 
-# ─────────────────────── Metric helpers ───────────────────────
-
 def pr_with_tolerance(pred, gt, tolerance=2):
     pred_total = int(pred.sum())
     gt_total   = int(gt.sum())
@@ -126,7 +98,6 @@ def pr_with_tolerance(pred, gt, tolerance=2):
 
 
 def sweep_fscore(pred_strength, gt_mask_3d, percentiles=PERCENTILES, tolerance=TOLERANCE):
-    """Best F-score against a binary GT mask over a threshold sweep."""
     if (pred_strength > 0).sum() == 0:
         return {'fscore': 0.0, 'precision': 0.0, 'recall': 0.0, 'percentile': 0.0}
     best = {'fscore': -1}
@@ -149,7 +120,6 @@ def sweep_fscore(pred_strength, gt_mask_3d, percentiles=PERCENTILES, tolerance=T
 
 def sweep_fscore_relative(pred_strength, ref_strength,
                            percentiles=PERCENTILES, tolerance=TOLERANCE):
-    """F-score where ref_strength is thresholded to serve as pseudo-GT."""
     if (pred_strength > 0).sum() == 0 or (ref_strength > 0).sum() == 0:
         return {'fscore': 0.0, 'precision': 0.0, 'recall': 0.0, 'percentile': 0.0}
     best = {'fscore': -1}
@@ -173,16 +143,10 @@ def sweep_fscore_relative(pred_strength, ref_strength,
 
 
 def flow_coverage(rel_mask):
-    """Fraction of spatio-temporal voxels with reliable flow."""
     return float(rel_mask.mean())
 
 
 def flow_epe(flo_pred, flo_ref, rel_pred, rel_ref):
-    """Mean endpoint error where both flow fields are reliable.
-
-    flo shape: (H, W, 2, T)  — dim-2 is [u, v]
-    rel shape: (H, W, T)
-    """
     mask = rel_pred & rel_ref
     if mask.sum() == 0:
         return float('nan')
@@ -192,17 +156,7 @@ def flow_epe(flo_pred, flo_ref, rel_pred, rel_ref):
     return float(epe[mask].mean())
 
 
-# ─────────────────────── Pipeline runner ──────────────────────
-
 def run_pipeline(filter_class, B, name, flux_noise_std):
-    """Run full edge + flow pipeline for one filter class on volume B.
-
-    Two memory phases are measured separately:
-      phase 1 — edge detection.  Methods with response_and_edges() (IIR) use
-                 their streaming path here, so peak_mem_edges_mb is low for them.
-      phase 2 — FJ1990 flow.    Requires response() to be called for all methods,
-                 so peak_mem_flow_mb is comparable across methods.
-    """
     print(f"    [{name}] filtering...", end=" ", flush=True)
     H, W, N = B.shape
     filts = filter_class()
@@ -218,13 +172,11 @@ def run_pipeline(filter_class, B, name, flux_noise_std):
     t_start = time.time()
 
     if hasattr(filts, 'response_and_edges'):
-        # ── Phase 1 (IIR): streaming edge detection — never materialises all R ──
         tracemalloc.start()
         edges = filts.response_and_edges(B, flux_noise_std=flux_noise_std)
         _, peak_mem_edges = tracemalloc.get_traced_memory()
         tracemalloc.stop()
 
-        # ── Phase 2 (IIR): full response() needed for FJ1990 ──
         tracemalloc.start()
         R, Rz = filts.response(B, flux_noise_std=flux_noise_std)
         Rz_w = _RzWrapper(Rz, num_dirs, filts.num_scales)
@@ -236,7 +188,6 @@ def run_pipeline(filter_class, B, name, flux_noise_std):
         tracemalloc.stop()
 
     else:
-        # ── Phase 1 (Log Gabor / Steerable): response() → edges ──
         tracemalloc.start()
         R, Rz = filts.response(B, flux_noise_std=flux_noise_std)
         R_fmt = [[R.get((d, s), None) for s in range(filts.num_scales)]
@@ -249,7 +200,6 @@ def run_pipeline(filter_class, B, name, flux_noise_std):
         edges, _, _ = features_3D_structure_tensor(*pc)
         _, peak_mem_edges = tracemalloc.get_traced_memory()
 
-        # ── Phase 2 (Log Gabor / Steerable): reuse Rz already in memory ──
         Rz_w = _RzWrapper(Rz, num_dirs, filts.num_scales)
         _, _, flo2_ms, rel2_ms = vel_fj1990_approx_withz(
             Rz_w, filts.tuning_directions(),
@@ -297,7 +247,6 @@ def _crop_result(r, n_skip):
 
 
 def _flow_metrics(r, ref):
-    """Compute flo1/flo2 coverage and EPE vs reference."""
     flo1_cov = flow_coverage(r['rel_flo1_crop'])
     flo1_epe = flow_epe(r['flo1_crop'], ref['flo1_crop'],
                         r['rel_flo1_crop'], ref['rel_flo1_crop'])
@@ -325,8 +274,6 @@ def _save_method_videos(r, out_dir):
         save_video_imageio(np.moveaxis(flo2_v, -1, 0),
                            str(out_dir / f"flo2_s{s + 1}.mp4"))
 
-
-# ─────────────────────── Real-data eval ───────────────────────
 
 def run_real_data(output_dir):
     mat_files = sorted(REAL_DATA_DIR.glob("*.mat"))
@@ -400,8 +347,6 @@ def run_real_data(output_dir):
 
     return records
 
-
-# ─────────────────────── Sim-data eval ────────────────────────
 
 def run_sim_data(output_dir):
     scene_dirs = sorted([d for d in SIM_DATA_DIR.iterdir()
@@ -488,8 +433,6 @@ def run_sim_data(output_dir):
 
     return records
 
-
-# ─────────────────────── Summary printers ─────────────────────
 
 def _nanmean(vals):
     v = [x for x in vals if not (isinstance(x, float) and np.isnan(x))]
@@ -622,8 +565,6 @@ def save_summary_txt(real_records, sim_records, path):
         f.write('\n'.join(lines) + '\n')
     print(f"\nSummary tables saved to {path}")
 
-
-# ─────────────────────────── Main ─────────────────────────────
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

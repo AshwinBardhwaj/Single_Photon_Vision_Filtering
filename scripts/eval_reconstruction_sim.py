@@ -21,8 +21,6 @@ from sensor.sensor import binom_noise_std, ippd
 from skimage.metrics import structural_similarity as ssim
 
 
-# ---------- Evaluation helpers (from run_base_sim.py) ----------
-
 def pr_with_tolerance(pred, gt, tolerance=2):
     pred_total = int(pred.sum())
     gt_total = int(gt.sum())
@@ -67,8 +65,6 @@ def sweep_eval_edges(edge_strength, edges_gt, percentiles=None, tolerance=2):
     return {'all': results, 'best_idx': best_idx, 'best': results[best_idx]}
 
 
-# ---------- Filter evaluation ----------
-
 FILTS_CONFIG = {
     'velocities': np.array([1, -1, 0.3, -0.3, 0]),
     'orientations': np.array([0, 60, 120]),
@@ -98,15 +94,13 @@ def run_evaluation(filter_class, B_data, name, flux_noise_std=None):
         runtime = time.time() - start_time
     else:
         R, Rz = filts.response(B_data, flux_noise_std=flux_noise_std)
-        response_end = time.time()
-        runtime = response_end - start_time
+        runtime = time.time() - start_time
 
         num_dirs = filts.num_orientations * filts.num_velocities
         R_formatted = [
             [R.get((d, s), None) for s in range(filts.num_scales)]
             for d in range(num_dirs)
         ]
-
         pc_out = phase_congruency_3D_structure_tensor(
             R_formatted,
             filts.tuning_directions(),
@@ -135,19 +129,15 @@ def run_evaluation(filter_class, B_data, name, flux_noise_std=None):
     }
 
 
-# ---------- Main ----------
-
 if __name__ == "__main__":
     SIM_DATA_DIR = root_dir / "scripts" / "data" / "sim_xvfi_1bit"
     OUTPUT_BASE = root_dir / "scripts" / "output" / "reconstruction_sim"
 
-    # Select a subset of folders and PPP levels to evaluate
     PPP_LEVELS = [0.50, 1.25, 2.00]
-    MAX_CLIPS_PER_FOLDER = 3  # limit clips per folder to keep runtime reasonable
+    MAX_CLIPS_PER_FOLDER = 3
     TOLERANCE = 2
     PERCENTILES = list(range(50, 100, 5))
 
-    # Discover all parent folders
     parent_dirs = sorted([
         d for d in SIM_DATA_DIR.iterdir()
         if d.is_dir() and d.name != '.DS_Store'
@@ -186,20 +176,15 @@ if __name__ == "__main__":
                     flux_est = ippd(gaussian_filter(B, sigma=10))
                     flux_noise_std = binom_noise_std(flux_est, M)
 
-                    # Output directory
                     out_dir = OUTPUT_BASE / parent_dir.name / clip_dir.name / f"ppp_{ppp:.2f}"
                     os.makedirs(out_dir, exist_ok=True)
 
-                    # Run Log Gabor
                     lg_res = run_evaluation(LogGaborBank3DSepT, B, "Log Gabor", flux_noise_std)
-
-                    # Run Adaptive IIR
                     iir_res = run_evaluation(AdaptiveIIRFilterBank3DSepT, B, "Adaptive IIR", flux_noise_std)
 
-                    # Temporally crop the first and last N_SKIP frames to remove temporal filter boundary artifacts
                     N_SKIP = 15
                     H, W, N = B.shape
-                    
+
                     if N > 2 * N_SKIP:
                         lg_estr_crop = lg_res['edge_strength'][:, :, N_SKIP:-N_SKIP]
                         lg_norm_crop = lg_res['edge_strength_norm'][:, :, N_SKIP:-N_SKIP]
@@ -213,15 +198,9 @@ if __name__ == "__main__":
                         iir_norm_crop = iir_res['edge_strength_norm']
                         edges_gt_crop = edges_gt
 
-                    # SSIM between methods
-                    ssim_between = ssim(
-                        lg_norm_crop,
-                        iir_norm_crop,
-                        data_range=1.0
-                    )
+                    ssim_between = ssim(lg_norm_crop, iir_norm_crop, data_range=1.0)
                     print(f"SSIM (LG vs IIR): {ssim_between:.4f}")
 
-                    # Evaluate against ground truth
                     lg_sweep = sweep_eval_edges(lg_estr_crop, edges_gt_crop, PERCENTILES, TOLERANCE)
                     iir_sweep = sweep_eval_edges(iir_estr_crop, edges_gt_crop, PERCENTILES, TOLERANCE)
 
@@ -231,7 +210,6 @@ if __name__ == "__main__":
                     print(f"[Log Gabor]     Best F={lg_best['fscore']:.4f}  P={lg_best['precision']:.4f}  R={lg_best['recall']:.4f}  @pct={lg_best['percentile']:.0f}")
                     print(f"[Adaptive IIR]  Best F={iir_best['fscore']:.4f}  P={iir_best['precision']:.4f}  R={iir_best['recall']:.4f}  @pct={iir_best['percentile']:.0f}")
 
-                    # Save edge videos
                     for label, estr_crop in [("log_gabor", lg_estr_crop), ("adaptive_iir", iir_estr_crop)]:
                         d = out_dir / label
                         os.makedirs(d, exist_ok=True)
@@ -239,7 +217,6 @@ if __name__ == "__main__":
                         ev = (ev * 255).astype(np.uint8) if ev.dtype != np.uint8 else ev
                         save_video_imageio(np.moveaxis(ev, -1, 0), str(d / "edge_detection.mp4"))
 
-                    # Save metrics
                     metrics = {
                         'clip': clip_id,
                         'data_shape': list(B.shape),
@@ -272,14 +249,12 @@ if __name__ == "__main__":
                     import traceback
                     traceback.print_exc()
 
-    # ---------- Summary ----------
     if all_results:
         print(f"\n\n{'='*70}")
         print("FINAL SUMMARY ACROSS SIMULATED DATA")
         print(f"{'='*70}")
         print(f"Total Clips Processed: {len(all_results)}")
 
-        # Group by PPP level
         for ppp in PPP_LEVELS:
             ppp_results = [r for r in all_results if r['ppp'] == ppp]
             if not ppp_results:
@@ -307,7 +282,6 @@ if __name__ == "__main__":
             print(f"{'Avg Peak Memory (MB)':<25} | {avg_lg_mem:<15.2f} | {avg_iir_mem:<15.2f}")
             print(f"{'Avg SSIM (LG vs IIR)':<25} | {avg_ssim:<15.4f}")
 
-        # Overall averages
         print(f"\n--- OVERALL ({len(all_results)} clips) ---")
         print(f"{'Metric':<25} | {'Log Gabor':<15} | {'Adaptive IIR':<15}")
         print("-" * 61)
@@ -324,7 +298,6 @@ if __name__ == "__main__":
         print(f"{'Avg SSIM (LG vs IIR)':<25} | {avg_ssim:<15.4f}")
         print("=" * 70)
 
-        # Save overall summary
         summary_path = OUTPUT_BASE / "summary.json"
         with open(summary_path, "w") as f:
             json.dump(all_results, f, indent=2)

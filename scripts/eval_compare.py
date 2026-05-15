@@ -10,7 +10,6 @@ root_dir = Path(__file__).resolve().parent.parent
 sys.path.append(str(root_dir))
 sys.path.append(str(root_dir / "scripts"))
 
-# Mock save_video to avoid disk I/O and speed up execution
 import fileio.fileio
 def dummy_save_video(*args, **kwargs):
     pass
@@ -24,27 +23,21 @@ SIM_DATA_DIR = DATA_BASEDIR / "sim_xvfi_1bit"
 def get_all_mat_files(base_dir, test_folders=None):
     mat_files = []
     for root, _, files in os.walk(base_dir):
-        # Only include specific test folders if provided
         if test_folders is not None:
-            folder_name = Path(root).parts[-2] if len(Path(root).parts) >= 2 else ""
-            # Some paths might have the folder deeper, so we check if any part is in test_folders
             if not any(f in Path(root).parts for f in test_folders):
                 continue
-                
         for file in files:
             if file.endswith('.mat') and 'ppp' in file:
                 mat_files.append(Path(root) / file)
     return mat_files
 
 def main():
-    # Use folders 014 and 016 strictly as the hold-out test set
     TEST_FOLDERS = ['014', '016']
     mat_files = get_all_mat_files(SIM_DATA_DIR, test_folders=TEST_FOLDERS)
     if not mat_files:
         print("No .mat files found in", SIM_DATA_DIR)
         return
 
-    # Select a random subset to evaluate quickly (or increase to evaluate all)
     num_samples = 20
     random.seed(42)
     selected_files = random.sample(mat_files, min(num_samples, len(mat_files)))
@@ -81,11 +74,11 @@ def main():
 
     for i, data_file in enumerate(selected_files):
         print(f"\n--- Video {i+1}/{len(selected_files)}: {data_file.name} ---")
-        
+
         for method in methods:
             print(f"> Running {method}...")
             params['FILTER_TYPE'] = method
-            
+
             try:
                 execute_pipeline_sim(
                     data_file=data_file,
@@ -95,8 +88,7 @@ def main():
                     crop_bounds=None,
                     eval_config=eval_config,
                 )
-                
-                # Read metrics from the saved json
+
                 metrics_path = output_dir / "edge_metrics.json"
                 if metrics_path.exists():
                     with open(metrics_path, 'r') as f:
@@ -114,7 +106,7 @@ def main():
         f = np.array(results[method]['fscore'])
         p = np.array(results[method]['precision'])
         r = np.array(results[method]['recall'])
-        
+
         if len(f) > 0:
             results_str += f"--- {method.upper()} ---\n"
             results_str += f"F-Score:   {np.mean(f):.4f} ± {np.std(f):.4f}\n"

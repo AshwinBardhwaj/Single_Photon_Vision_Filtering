@@ -1,7 +1,3 @@
-"""
-Post-process existing B.mp4 files to produce B_bright.mp4 (gamma-brightened)
-without re-running the full pipeline.
-"""
 import sys
 from pathlib import Path
 import numpy as np
@@ -28,9 +24,3 @@ def brighten_video(src: Path):
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         paths = [Path(p) for p in sys.argv[1:]]
-    else:
-        paths = sorted(OUTPUT_BASE.rglob("B.mp4"))
-
-    for p in paths:
-        print(f"Processing {p} ...")
-        brighten_video(p)

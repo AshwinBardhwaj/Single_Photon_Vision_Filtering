@@ -27,8 +27,7 @@ params = {
     'MAX_FLO': 1,
     'FLO1_VIS_THICKEN': 3,
     'FLO2_REL_THRESH': 0.5,
-    'FILTER_TYPE':'learned'
-    # 'FILTER_TYPE': 'log_gabor'
+    'FILTER_TYPE': 'learned'
 }
 
 OUT_IMIN = 0
